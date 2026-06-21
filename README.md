@@ -8,7 +8,7 @@ onboard flash. No companion app, no cloud service, no external server.
 ![Framework](https://img.shields.io/badge/framework-Arduino%20%2F%20PlatformIO-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-![Dashboard](Dashboard.png)
+![Dashboard](dashboard.png)
 
 
 ## Why this exists
