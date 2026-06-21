@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ESP32-S3 // Control panel</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ========================================================== -->
+  <!-- Header: connection status + device name                    -->
+  <!-- ========================================================== -->
+  <header class="topbar">
+    <div class="topbar__brand">
+      <span class="topbar__dot" id="conn-dot"></span>
+      <h1 class="topbar__title">ESP32-S3<span class="topbar__title-accent">/ DASHBOARD</span></h1>
+    </div>
+    <div class="topbar__status" id="conn-status">Connecting…</div>
+  </header>
+
+  <main class="layout">
+
+    <!-- ========================================================== -->
+    <!-- LED control panel -- the page's signature feature          -->
+    <!-- ========================================================== -->
+    <section class="panel panel--led" aria-label="LED control">
+      <div class="panel__head">
+        <h2 class="panel__title">Addressable LED</h2>
+        <span class="panel__eyebrow">GPIO48 · WS2812</span>
+      </div>
+
+      <div class="led-stage">
+        <div class="led-orb-wrap">
+          <div class="led-orb" id="led-orb"></div>
+          <div class="led-orb-glow" id="led-glow"></div>
+        </div>
+
+        <div class="led-controls">
+          <label class="field">
+            <span class="field__label">Color</span>
+            <input type="color" id="color-picker" class="color-picker" value="#1fe88a">
+          </label>
+
+          <label class="field">
+            <span class="field__label">Brightness <span id="brightness-value" class="field__value">80</span></span>
+            <input type="range" id="brightness-slider" class="slider" min="0" max="255" value="80">
+          </label>
+
+          <div class="field">
+            <span class="field__label">Mode</span>
+            <div class="mode-group" id="mode-group">
+              <button class="mode-btn is-active" data-mode="solid">Solid</button>
+              <button class="mode-btn" data-mode="breathe">Breathe</button>
+              <button class="mode-btn" data-mode="rainbow">Rainbow</button>
+              <button class="mode-btn" data-mode="off">Off</button>
+            </div>
+          </div>
+
+          <div class="preset-row" id="preset-row">
+            <button class="preset-swatch" data-rgb="255,0,64"   style="--c:#ff0040"></button>
+            <button class="preset-swatch" data-rgb="31,232,138" style="--c:#1fe88a"></button>
+            <button class="preset-swatch" data-rgb="64,140,255" style="--c:#408cff"></button>
+            <button class="preset-swatch" data-rgb="255,180,84" style="--c:#ffb454"></button>
+            <button class="preset-swatch" data-rgb="200,80,255" style="--c:#c850ff"></button>
+            <button class="preset-swatch" data-rgb="255,255,255" style="--c:#ffffff"></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================== -->
+    <!-- Metrics grid -- each category grouped into its own card    -->
+    <!-- ========================================================== -->
+    <div class="metrics-grid">
+
+      <!-- ---------- Network ---------- -->
+      <section class="card" aria-label="Network status">
+        <h3 class="card__title">Network</h3>
+        <div class="signal-meter">
+          <div class="signal-meter__bars" id="signal-bars">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <span class="signal-meter__db" id="rssi-dbm">-- dBm</span>
+        </div>
+        <dl class="kv">
+          <div class="kv__row"><dt>SSID</dt><dd id="m-ssid">--</dd></div>
+          <div class="kv__row"><dt>IP address</dt><dd id="m-ip">--</dd></div>
+          <div class="kv__row"><dt>Gateway</dt><dd id="m-gateway">--</dd></div>
+          <div class="kv__row"><dt>Subnet</dt><dd id="m-subnet">--</dd></div>
+          <div class="kv__row"><dt>DNS</dt><dd id="m-dns">--</dd></div>
+          <div class="kv__row"><dt>Channel</dt><dd id="m-channel">--</dd></div>
+          <div class="kv__row"><dt>MAC</dt><dd id="m-mac" class="mono-sm">--</dd></div>
+        </dl>
+      </section>
+
+      <!-- ---------- Memory ---------- -->
+      <section class="card" aria-label="Memory status">
+        <h3 class="card__title">Memory</h3>
+
+        <div class="meter">
+          <div class="meter__label"><span>RAM (Heap)</span><span id="heap-text">--</span></div>
+          <div class="meter__track"><div class="meter__fill" id="heap-fill"></div></div>
+        </div>
+
+        <div class="meter">
+          <div class="meter__label"><span>PSRAM</span><span id="psram-text">--</span></div>
+          <div class="meter__track"><div class="meter__fill meter__fill--alt" id="psram-fill"></div></div>
+        </div>
+
+        <dl class="kv">
+          <div class="kv__row"><dt>Min free heap</dt><dd id="m-min-heap">--</dd></div>
+        </dl>
+      </section>
+
+      <!-- ---------- Storage ---------- -->
+      <section class="card" aria-label="Storage status">
+        <h3 class="card__title">Storage</h3>
+
+        <div class="meter">
+          <div class="meter__label"><span>Sketch flash</span><span id="sketch-text">--</span></div>
+          <div class="meter__track"><div class="meter__fill" id="sketch-fill"></div></div>
+        </div>
+
+        <div class="meter">
+          <div class="meter__label"><span>Filesystem (LittleFS)</span><span id="fs-text">--</span></div>
+          <div class="meter__track"><div class="meter__fill meter__fill--alt" id="fs-fill"></div></div>
+        </div>
+
+        <dl class="kv">
+          <div class="kv__row"><dt>Total flash size</dt><dd id="m-flash-total">--</dd></div>
+          <div class="kv__row"><dt>Free space for OTA</dt><dd id="m-free-sketch">--</dd></div>
+        </dl>
+      </section>
+
+      <!-- ---------- Chip ---------- -->
+      <section class="card" aria-label="Chip info">
+        <h3 class="card__title">Chip</h3>
+        <div class="big-stat">
+          <span class="big-stat__value" id="m-temp">--</span>
+          <span class="big-stat__unit">°C</span>
+        </div>
+        <dl class="kv">
+          <div class="kv__row"><dt>Model</dt><dd id="m-chip-model">--</dd></div>
+          <div class="kv__row"><dt>Revision</dt><dd id="m-chip-rev">--</dd></div>
+          <div class="kv__row"><dt>CPU frequency</dt><dd id="m-cpu-freq">--</dd></div>
+          <div class="kv__row"><dt>Core count</dt><dd id="m-cores">--</dd></div>
+          <div class="kv__row"><dt>SDK version</dt><dd id="m-sdk" class="mono-sm">--</dd></div>
+        </dl>
+      </section>
+
+      <!-- ---------- Runtime ---------- -->
+      <section class="card card--wide" aria-label="Runtime">
+        <h3 class="card__title">Runtime</h3>
+        <div class="stat-row">
+          <div class="stat-row__item">
+            <span class="stat-row__value mono" id="m-uptime">--</span>
+            <span class="stat-row__label">Uptime</span>
+          </div>
+          <div class="stat-row__item">
+            <span class="stat-row__value mono" id="m-boot-count">--</span>
+            <span class="stat-row__label">Boot count</span>
+          </div>
+          <div class="stat-row__item">
+            <span class="stat-row__value mono" id="m-http-requests">--</span>
+            <span class="stat-row__label">HTTP requests</span>
+          </div>
+          <div class="stat-row__item">
+            <span class="stat-row__value mono" id="m-ws-clients">--</span>
+            <span class="stat-row__label">Connected clients</span>
+          </div>
+        </div>
+        <dl class="kv">
+          <div class="kv__row"><dt>Last reset reason</dt><dd id="m-reset-reason">--</dd></div>
+        </dl>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    <span id="footer-status">Last update: --</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

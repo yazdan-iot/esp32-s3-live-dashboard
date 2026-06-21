@@ -1,0 +1,327 @@
+/* ============================================================================
+   ESP32-S3 Dashboard -- Stylesheet
+   Visual identity: a real lab/embedded equipment control panel, not a SaaS app.
+   ============================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  /* ---------- Color palette: derived from a green LED glowing on a dark PCB ---------- */
+  --bg:            #0a0d0f;
+  --surface:       #12171a;
+  --surface-raised:#161d21;
+  --border:        #232c30;
+
+  --text:          #e8edf0;
+  --text-dim:      #5f7480;
+  --text-dimmer:   #3a464c;
+
+  --accent:        #3ddc84;   /* phosphor green -- the page's primary accent */
+  --accent-dim:     #3ddc8433;
+  --accent-glow:   #3ddc8455;
+  --warn:          #ffb454;   /* amber -- for warnings/temperature/attention */
+  --danger:        #ff5d5d;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-mono:     'JetBrains Mono', monospace;
+}
+
+/* ---------- Base reset ---------- */
+* { box-sizing: border-box; }
+html { color-scheme: dark; }
+body {
+  margin: 0;
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse 900px 500px at 15% -10%, var(--accent-dim), transparent 60%),
+    repeating-linear-gradient(0deg, transparent, transparent 39px, #ffffff05 39px, #ffffff05 40px);
+  color: var(--text);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+.mono    { font-family: var(--font-mono); }
+.mono-sm { font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: -0.02em; }
+
+/* Accessibility: visible focus ring on interactive elements (keyboard nav) */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+/* ============================================================================
+   Top bar
+   ============================================================================ */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: #0a0d0fdd;
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+.topbar__brand { display: flex; align-items: center; gap: 12px; }
+.topbar__dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--text-dimmer);
+  transition: background 0.4s, box-shadow 0.4s;
+}
+.topbar__dot.is-live {
+  background: var(--accent);
+  box-shadow: 0 0 12px 2px var(--accent-glow);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot { 50% { opacity: 0.5; } }
+
+.topbar__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+.topbar__title-accent { color: var(--text-dim); font-weight: 500; margin-right: 6px; }
+.topbar__status { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-dim); }
+
+/* ============================================================================
+   Main layout
+   ============================================================================ */
+.layout {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 28px 20px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* ============================================================================
+   LED panel -- the page's signature feature
+   ============================================================================ */
+.panel {
+  background: linear-gradient(165deg, var(--surface-raised), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+.panel__head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 20px; }
+.panel__title { font-size: 1.1rem; margin: 0; font-weight: 700; }
+.panel__eyebrow { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-dim); }
+
+.led-stage {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 32px;
+  align-items: center;
+}
+@media (max-width: 640px) {
+  .led-stage { grid-template-columns: 1fr; justify-items: center; }
+}
+
+/* --- Simulated LED orb: the page's signature visual element --- */
+.led-orb-wrap { position: relative; width: 160px; height: 160px; margin: 0 auto; }
+.led-orb {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--led-color, #1fe88a) 90%, white 10%), var(--led-color, #1fe88a) 55%, color-mix(in srgb, var(--led-color, #1fe88a) 70%, black 30%));
+  box-shadow:
+    inset 0 -8px 20px #00000055,
+    inset 0 6px 14px #ffffff33;
+  transition: background 0.25s ease;
+}
+.led-orb-glow {
+  position: absolute; inset: -40px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--led-color, #1fe88a) 0%, transparent 70%);
+  opacity: 0.45;
+  filter: blur(6px);
+  transition: background 0.25s ease, opacity 0.25s ease;
+  z-index: -1;
+}
+.led-orb-wrap.is-off .led-orb       { background: #1a1f22; box-shadow: inset 0 4px 10px #00000077; }
+.led-orb-wrap.is-off .led-orb-glow  { opacity: 0; }
+.led-orb-wrap.is-breathe .led-orb-glow { animation: breathe-glow 4s ease-in-out infinite; }
+@keyframes breathe-glow { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.6; } }
+
+/* --- Controls --- */
+.led-controls { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field__label { font-size: 0.8rem; color: var(--text-dim); display: flex; justify-content: space-between; }
+.field__value { font-family: var(--font-mono); color: var(--accent); }
+
+.color-picker {
+  width: 100%; height: 42px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* Custom slider -- default browser styling clashes with the page's look */
+.slider {
+  -webkit-appearance: none;
+  width: 100%; height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  outline: none;
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  cursor: pointer;
+  border: 2px solid var(--bg);
+}
+.slider::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--bg); cursor: pointer;
+}
+
+.mode-group { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.mode-btn {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  padding: 9px 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mode-btn:hover { border-color: var(--text-dim); color: var(--text); }
+.mode-btn.is-active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.preset-row { display: flex; gap: 10px; }
+.preset-swatch {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--c);
+  border: 2px solid var(--border);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.preset-swatch:hover { transform: scale(1.15); }
+
+/* ============================================================================
+   Metrics card grid
+   ============================================================================ */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+}
+.card--wide { grid-column: 1 / -1; }
+.card__title {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin: 0 0 14px;
+  font-weight: 700;
+}
+
+/* --- Key/value list --- */
+.kv { margin: 14px 0 0; }
+.kv__row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.kv__row:first-child { border-top: none; }
+.kv__row dt { color: var(--text-dim); margin: 0; }
+.kv__row dd { margin: 0; font-family: var(--font-mono); font-size: 0.78rem; }
+
+/* --- WiFi signal meter --- */
+.signal-meter { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+.signal-meter__bars { display: flex; gap: 3px; align-items: flex-end; height: 22px; }
+.signal-meter__bars span {
+  width: 6px;
+  background: var(--text-dimmer);
+  border-radius: 2px;
+  transition: background 0.3s;
+}
+.signal-meter__bars span:nth-child(1) { height: 30%; }
+.signal-meter__bars span:nth-child(2) { height: 48%; }
+.signal-meter__bars span:nth-child(3) { height: 64%; }
+.signal-meter__bars span:nth-child(4) { height: 82%; }
+.signal-meter__bars span:nth-child(5) { height: 100%; }
+.signal-meter__bars span.is-active { background: var(--accent); }
+.signal-meter__db { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-dim); }
+
+/* --- Progress bar for memory/flash usage --- */
+.meter { margin-bottom: 14px; }
+.meter__label {
+  display: flex; justify-content: space-between;
+  font-size: 0.78rem; color: var(--text-dim); margin-bottom: 6px;
+}
+.meter__label span:last-child { font-family: var(--font-mono); color: var(--text); }
+.meter__track {
+  height: 7px; border-radius: 999px;
+  background: var(--border); overflow: hidden;
+}
+.meter__fill {
+  height: 100%; width: 0%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.meter__fill--alt { background: var(--warn); }
+
+/* --- Big stat number (temperature) --- */
+.big-stat { display: flex; align-items: baseline; gap: 4px; margin-bottom: 10px; }
+.big-stat__value { font-family: var(--font-mono); font-size: 2.4rem; font-weight: 700; color: var(--warn); line-height: 1; }
+.big-stat__unit  { font-size: 1rem; color: var(--text-dim); }
+
+/* --- Stat row (uptime/boot count/...) --- */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 8px;
+}
+@media (max-width: 560px) { .stat-row { grid-template-columns: repeat(2, 1fr); } }
+.stat-row__item {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 12px; border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  text-align: center;
+}
+.stat-row__value { font-size: 1.15rem; font-weight: 700; color: var(--accent); }
+.stat-row__label { font-size: 0.72rem; color: var(--text-dim); }
+
+/* ============================================================================
+   Footer
+   ============================================================================ */
+.footer {
+  text-align: center;
+  padding: 18px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-dimmer);
+}
