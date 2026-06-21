@@ -1,201 +1,170 @@
-/**
- * @file    main.cpp
- * @brief   Entry point: sets up WiFi, LittleFS, the async web server, and
- *          a WebSocket for streaming live system metrics to the dashboard.
- *
- * Frontend files (HTML/CSS/JS) are served from LittleFS rather than
- * embedded in flash via PROGMEM, so the UI can be updated independently
- * of the firmware. ESPAsyncWebServer is used instead of a synchronous
- * server so multiple clients can connect concurrently and metrics can be
- * pushed over WebSocket instead of relying on client-side polling.
- */
+# ESP32-S3 Live Dashboard
 
-#include <Arduino.h>
-#include <WiFi.h>
-#include <ESPAsyncWebServer.h>
-#include <LittleFS.h>
-#include <ArduinoJson.h>
-#include <ESPmDNS.h>
+A real-time web dashboard for the ESP32-S3 — live system metrics and
+addressable LED control, pushed over WebSocket and served entirely from
+onboard flash. No companion app, no cloud service, no external server.
 
-#include "Config.h"
-#include "LedController.h"
-#include "SystemMetrics.h"
-#include "JsonSerializer.h"
+![Platform](https://img.shields.io/badge/platform-ESP32--S3-blue)
+![Framework](https://img.shields.io/badge/framework-Arduino%20%2F%20PlatformIO-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-AsyncWebServer  g_server(Config::HTTP_PORT);
-AsyncWebSocket  g_webSocket("/ws");
-LedController   g_led(Config::RGB_LED_PIN, Config::RGB_LED_COUNT);
-
-uint32_t g_lastMetricsBroadcastMs = 0;
+![Uploading image.png…]()
 
 
-/// Connects to WiFi with simple retry; restarts the device if it can't
-/// connect within Config::WIFI_CONNECT_RETRY_LIMIT attempts.
-void connectToWiFi() {
-    Serial.printf("[WiFi] Connecting to: %s\n", Config::WIFI_SSID);
+## Why this exists
 
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(Config::WIFI_SSID, Config::WIFI_PASSWORD);
+Most ESP32 "dashboard" examples either hardcode HTML into the firmware
+(painful to iterate on) or poll the device every second over plain HTTP
+(wasteful, and laggy for anything interactive like LED control). This
+project keeps the frontend as ordinary, editable web files and uses a
+persistent WebSocket connection so metrics update continuously and LED
+changes apply instantly — across every connected client at once.
 
-    uint8_t retries = 0;
-    while (WiFi.status() != WL_CONNECTED && retries < Config::WIFI_CONNECT_RETRY_LIMIT) {
-        delay(Config::WIFI_CONNECT_RETRY_DELAY_MS);
-        Serial.print('.');
-        retries++;
-    }
+## Features
 
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("\n[WiFi] Connection failed -- restarting in 3s.");
-        delay(3000);
-        ESP.restart();
-    }
+- **Live system metrics** — updates pushed every second over WebSocket, no polling
+- **Addressable RGB LED control** (WS2812) — color changes apply instantly, synced across all connected clients
+- **Web UI served from flash** — HTML/CSS/JS live on LittleFS, editable without touching firmware
+- **Zero external dependencies** — no cloud relay, no companion app; everything runs on the device
+- **mDNS support** — reachable at `esp32-dashboard.local`, no need to hunt for the IP
 
-    Serial.printf("\n[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-}
+## Hardware
 
+Built and tested on an **ESP32-S3 (N8R2 variant — 8MB flash / 2MB PSRAM)**.
 
-/// Handles incoming WebSocket messages, e.g.:
-///   {"action":"setColor","r":255,"g":0,"b":0}
-///   {"action":"setBrightness","value":128}
-///   {"action":"setMode","mode":"rainbow"}
-void handleWebSocketMessage(AsyncWebSocketClient* client, const uint8_t* data, size_t len) {
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, data, len);
-    if (err) {
-        Serial.printf("[WS] JSON parse error: %s\n", err.c_str());
-        return;
-    }
+| Requirement | Notes |
+|---|---|
+| Board | ESP32-S3, any variant with enough flash for LittleFS + firmware |
+| LED | WS2812 / NeoPixel-compatible addressable RGB LED |
+| Power | Stable 500mA+ USB supply (see [Troubleshooting](#troubleshooting)) |
 
-    const char* action = doc["action"];
-    if (action == nullptr) return;
+## Project structure
 
-    if (strcmp(action, "setColor") == 0) {
-        const uint8_t r = doc["r"] | 0;
-        const uint8_t g = doc["g"] | 0;
-        const uint8_t b = doc["b"] | 0;
-        g_led.setColor(r, g, b);
+```
+esp32-dashboard/
+├── platformio.ini          Board, framework, and library config
+├── include/
+│   ├── Config.h             All tunable settings (pins, WiFi, timing)
+│   ├── LedController.h      RGB LED control (WS2812)
+│   ├── SystemMetrics.h      Hardware/software metrics collection
+│   └── JsonSerializer.h     Internal-data-to-JSON conversion
+├── src/
+│   ├── main.cpp             Entry point: WiFi, web server, WebSocket
+│   ├── LedController.cpp
+│   ├── SystemMetrics.cpp
+│   └── JsonSerializer.cpp
+└── data/                    Frontend files (uploaded to LittleFS)
+    ├── index.html
+    ├── style.css
+    └── app.js
+```
 
-    } else if (strcmp(action, "setBrightness") == 0) {
-        const uint8_t value = doc["value"] | 80;
-        g_led.setBrightness(value);
+## Getting started
 
-    } else if (strcmp(action, "setMode") == 0) {
-        const char* modeStr = doc["mode"] | "solid";
-        if (strcmp(modeStr, "breathe") == 0)      g_led.setMode(LedController::Mode::BREATHE);
-        else if (strcmp(modeStr, "rainbow") == 0) g_led.setMode(LedController::Mode::RAINBOW);
-        else if (strcmp(modeStr, "off") == 0)     g_led.setMode(LedController::Mode::OFF);
-        else                                       g_led.setMode(LedController::Mode::SOLID);
-    }
+### 1. Install dependencies
 
-    // Broadcast the new LED state to all clients so every connected
-    // dashboard stays in sync.
-    JsonDocument outDoc;
-    JsonObject ledState = outDoc["led"].to<JsonObject>();
-    JsonSerializer::writeLedState(ledState, g_led);
+This project uses [PlatformIO](https://platformio.org/). Install the
+[PlatformIO IDE extension](https://platformio.org/install/ide?install=vscode)
+for VS Code, or use the PlatformIO Core CLI directly.
 
-    String payload;
-    serializeJson(outDoc, payload);
-    g_webSocket.textAll(payload);
-}
+### 2. Configure before uploading
 
-void onWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t len) {
-    switch (type) {
-        case WS_EVT_CONNECT:
-            Serial.printf("[WS] Client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
-            SystemMetrics::setConnectedClientCount(server->count());
-            break;
+**WiFi credentials**
+In `include/Config.h`, replace `WIFI_SSID` and `WIFI_PASSWORD` with your
+own network credentials.
 
-        case WS_EVT_DISCONNECT:
-            Serial.printf("[WS] Client #%u disconnected\n", client->id());
-            SystemMetrics::setConnectedClientCount(server->count());
-            break;
+**LED pin — keep `Config.h` and `LedController.cpp` in sync**
+FastLED needs the pin number at **compile time** (a template parameter),
+not at runtime. Because of that, the pin number exists in two places:
 
-        case WS_EVT_DATA:
-            handleWebSocketMessage(client, data, len);
-            break;
+- `include/Config.h` → `Config::RGB_LED_PIN` (for reference/documentation)
+- `src/LedController.cpp` → inside `FastLED.addLeds<WS2812B, 48, GRB>(...)`
 
-        default:
-            break;
-    }
-}
+If your board wires the LED to a different pin, update the `48` in
+**both** files. This is one of the few real limitations of
+template-based Arduino libraries — the compiler needs to know the pin
+when it generates the templated code, so it can't be read from a config
+struct at runtime.
 
+> Not sure if your board's LED is RGB or single-color? Check the board's
+> datasheet/schematic for "WS2812" or "NeoPixel" near GPIO38 or GPIO48.
 
-/// Registers HTTP routes: a status snapshot endpoint (for instant data on
-/// page load, before the first WebSocket message arrives) plus static
-/// frontend files served from LittleFS.
-void setupHttpRoutes() {
-    g_server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest* request) {
-        SystemMetrics::incrementHttpRequestCount();
+### 3. Upload
 
-        JsonDocument doc;
-        const SystemMetrics::Snapshot snapshot = SystemMetrics::capture();
+This project has two parts, and **both** need to be uploaded:
 
-        JsonObject metricsObj = doc["metrics"].to<JsonObject>();
-        JsonSerializer::writeMetrics(metricsObj, snapshot);
+```bash
+# 1) Upload the filesystem (HTML/CSS/JS in data/) to the LittleFS partition
+pio run --target uploadfs
 
-        JsonObject ledObj = doc["led"].to<JsonObject>();
-        JsonSerializer::writeLedState(ledObj, g_led);
+# 2) Upload the firmware
+pio run --target upload
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-    });
+# 3) Watch serial output (find the device IP, debug)
+pio device monitor
+```
 
-    g_server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+Once connected, the IP address is printed to the serial monitor. You can
+also reach the device via mDNS on the same WiFi network, without
+knowing the IP:
 
-    g_server.onNotFound([](AsyncWebServerRequest* request) {
-        request->send(404, "text/plain", "404: Not found");
-    });
-}
+```
+http://esp32-dashboard.local
+```
 
-// ----------------------------------------------------------------------------
-// setup() / loop()
-// ----------------------------------------------------------------------------
+## Architecture
 
-void setup() {
-    Serial.begin(115200);
-    Serial.println("\n\n=== ESP32-S3 Dashboard -- starting up ===");
+### Why LittleFS instead of PROGMEM?
 
-    SystemMetrics::begin();
-    g_led.begin();
+There are two common ways to serve web files from an ESP32:
 
-    if (!LittleFS.begin(true)) {  // true = auto-format if unformatted
-        Serial.println("[FS] LittleFS init failed! Web files will be unavailable.");
-    }
+1. **PROGMEM** — HTML/CSS/JS content compiled as strings directly into the `.cpp` file
+2. **LittleFS** (used here) — files stored on a separate flash partition and served at runtime
 
-    connectToWiFi();
+LittleFS was chosen because:
 
-    if (MDNS.begin(Config::MDNS_HOSTNAME)) {
-        MDNS.addService("http", "tcp", Config::HTTP_PORT);
-        Serial.printf("[mDNS] Active at http://%s.local\n", Config::MDNS_HOSTNAME);
-    }
+- Frontend files can be edited in any regular web editor, with real syntax highlighting
+- Changing the dashboard's UI only needs `uploadfs`, with no firmware recompile/reupload
+- Keeping C++ logic separate from HTML/CSS/JS (presentation) keeps the project cleaner
 
-    g_webSocket.onEvent(onWebSocketEvent);
-    g_server.addHandler(&g_webSocket);
+### Communication: HTTP for state, WebSocket for live updates
 
-    setupHttpRoutes();
-    g_server.begin();
+```
+Browser  <---HTTP GET /api/status--->   Full snapshot (initial page load)
+Browser  <======WebSocket /ws=======>   Live metrics every 1s + instant LED control
+```
 
-    Serial.println("=== Setup complete -- dashboard is live ===\n");
-}
+WebSocket was chosen over HTTP polling because:
 
-void loop() {
-    g_led.update();
-    g_webSocket.cleanupClients();  // drops dead clients (e.g. closed tabs)
+- The connection stays open — no per-second TCP setup/teardown overhead
+- An LED change from one client is pushed instantly to every other connected client
 
-    const uint32_t now = millis();
-    if (now - g_lastMetricsBroadcastMs >= Config::METRICS_BROADCAST_INTERVAL_MS) {
-        g_lastMetricsBroadcastMs = now;
+## Extending it
 
-        if (g_webSocket.count() > 0) {
-            JsonDocument doc;
-            const SystemMetrics::Snapshot snapshot = SystemMetrics::capture();
-            JsonObject metricsObj = doc["metrics"].to<JsonObject>();
-            JsonSerializer::writeMetrics(metricsObj, snapshot);
+### Adding a new metric
 
-            String payload;
-            serializeJson(doc, payload);
-            g_webSocket.textAll(payload);
-        }
-    }
-}
+To add a new field to the dashboard, update these four spots in order:
+
+1. `SystemMetrics.h` → add the field to `struct Snapshot`
+2. `SystemMetrics.cpp` → populate it in `capture()`
+3. `JsonSerializer.cpp` → add a serialization line in `writeMetrics()`
+4. `data/app.js` + `data/index.html` → add the display element and rendering
+
+## Troubleshooting
+
+| Issue | Likely fix |
+|---|---|
+| Page won't load / 404 | You forgot to run `uploadfs`; the `data/` files aren't on the device yet |
+| LED color doesn't change but the UI updates | The pin in `LedController.cpp` doesn't match your board's actual pin |
+| WebSocket keeps disconnecting/reconnecting | Weak USB power supply; the ESP32-S3 needs stable current under WiFi+WS load |
+| Chip temperature reads oddly | Normal — the onboard sensor has low accuracy (±5-10°C), fine for spotting unusual heat, not a precise thermometer |
+
+## Roadmap
+
+- [ ] Persist LED state across reboots (currently resets on power loss)
+- [ ] OTA firmware updates
+- [ ] Authentication for the WebSocket endpoint
+
+## License
+
+MIT — see [LICENSE](LICENSE) for details.
